@@ -20,6 +20,27 @@ class KitsController < ApplicationController
     @kit.kit_item.line_items.build
   end
 
+  # This endpoint is in support of displaying a confirmation modal before a kit is created.
+  # Since the modal should only be shown for a valid kit, client side JS will invoke this
+  # endpoint, and if the kit is valid, this endpoint also returns the HTML for the modal content.
+  # Important: The kit model is intentionally NOT saved to the database at this point because
+  # the user has not yet confirmed that they want to create it.
+  def validate
+    @kit = Kit.new(kit_params.except(:line_items_attributes).merge(organization: current_organization))
+
+    # Build the kit_item and line_items from the provided params
+    item_params = params.require(:kit_item).permit(line_items_attributes: [:item_id, :quantity, :_destroy])
+    @kit.kit_item ||= KitItem.new(item_params.merge(organization: current_organization))
+
+    @kit.kit_item.line_items.combine!
+    if @kit.valid?
+      body = render_to_string(template: 'kits/validate', formats: [:html], layout: false)
+      render json: {valid: true, body: body}
+    else
+      render json: {valid: false}
+    end
+  end
+
   def create
     kit_creation = KitCreateService.new(organization_id: current_organization.id, kit_params: kit_params)
     kit_creation.call
